@@ -219,7 +219,7 @@ class Gamble(commands.Cog):
         updated_giver_gifted = giver_gifted + amount
         cursor.execute(f'UPDATE coins SET coins={updated_giver_coins}, gifted={updated_giver_gifted} WHERE user="{giver_id}" AND server="{guild_id}";')
 
-        # Add to receiver
+        # gift to receiver
         cursor.execute(f'SELECT coins FROM coins WHERE user="{receiver_id}" AND server="{guild_id}";')
         row = cursor.fetchone()
 

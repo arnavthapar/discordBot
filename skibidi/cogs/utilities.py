@@ -1,6 +1,8 @@
 from random import choice, randint
 from discord import Member, Embed, Interaction, TextChannel, app_commands, Colour, User#, utild
 from discord.ext import commands
+from datetime import timezone, datetime
+from zoneinfo import ZoneInfo
 
 class Utility(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -138,9 +140,10 @@ class Utility(commands.Cog):
         text="What the bot says",
         channel="What channel the bot says the text in",
         tts = "If the text is said with text to speech",
-        silent = "If the text is silent (no pings)"
+        silent = "If the text is silent (no pings)",
+        delete_after = "Automatic message deletion (in seconds)"
     )
-    async def speak(self, interaction:Interaction, text:str, channel:TextChannel=None, tts:bool=False, silent:bool=False):
+    async def speak(self, interaction:Interaction, text:str, channel:TextChannel=None, tts:bool=False, silent:bool=False, delete_after:float=None):
         if interaction.guild is None:
             await interaction.response.send_message(
                 "This command cannot be used in DMs.", ephemeral=True
@@ -152,14 +155,15 @@ class Utility(commands.Cog):
             await interaction.response.send_message('You do not have the correct permissions for this command. (Manage Messages)', ephemeral=True)
             return
         # Command
-        if channel != None:
-            await channel.send(text, tts=tts, silent=silent) # Send to everyone
-            await interaction.response.send_message(f'"{text}" sent.', ephemeral=True) # Send to sender only
-        else:
-            channel = interaction.channel # Select channel
-            await channel.send(text, tts=tts, silent=silent) # Send to everyone
-            await interaction.response.send_message(f'"{text}" sent.', ephemeral=True) # Send to sender only
-        print(f'Manually spoken: "{text}" by {interaction.user} in {channel} with TTS as {tts} and silent as {silent}.')
+        if channel == None:
+            channel = interaction.channel
+        await channel.send(text, tts=tts, silent=silent, delete_after=delete_after) # Send to everyone
+        await interaction.response.send_message(f'"{text}" sent.', ephemeral=True) # Send to sender only
+        timestamp = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f'[{timestamp}] [SPOKEN] [TTS:{tts}, SILENT:{silent}, DELETE:{delete_after}] by {interaction.user}: "{text}"\n'
+        print(log_line)
+        with open("dm_log.log", "a", encoding="utf-8") as f:
+            f.write(log_line)
 
     @app_commands.command(name='mute', description='Allows you to mute a person, preventing them from talking.')
     @app_commands.describe(
@@ -174,10 +178,12 @@ class Utility(commands.Cog):
             return
         member: Member | None = interaction.guild.get_member(user.id)
         if member is None:
-            await interaction.response.send_message(
-                "❌ That user is not in this server.", ephemeral=True
-            )
-            return
+            member = interaction.guild.fetch_member(user.id)
+            if member is None:
+                await interaction.response.send_message(
+                    "❌ That user is not in this server.", ephemeral=True
+                )
+                return
         # Check permissions
         if not interaction.guild.me.guild_permissions.manage_channels:
             return await interaction.response.send_message("I do not have the correct permissions to mute people (Manage Channels)")
@@ -189,7 +195,7 @@ class Utility(commands.Cog):
         await interaction.response.defer() # This will take a long time, so defer them
         for channel in interaction.guild.channels: # Go through every channel
             await channel.set_permissions(member, send_messages=False) # Make sure they can't send anything
-        embed=Embed(title="Member muted.", description="**{0}** was muted by **{1}** for reason: {2}.".format(member, interaction.user, reason), color=0xff00f6) # Embed what happened
+        embed=Embed(title="Member muted.", description=f"{member.mention} was muted by {interaction.user.mention} for reason: {reason}.", color=0xff00f6) # Embed what happened
         await interaction.followup.send(embed=embed, ephemeral=False)
 
 
@@ -213,14 +219,14 @@ class Utility(commands.Cog):
         # Command
         member: Member | None = interaction.guild.get_member(user.id)
         if member is None:
-            await interaction.response.send_message(
-                "That user is not in this server.", ephemeral=True
-            )
-            return
+            member = interaction.guild.fetch_member(user.id)
+            if member is None:
+                await interaction.response.send_message("That user is not in this server.", ephemeral=True)
+                return
         await interaction.response.defer() # This will take a long time, so defer them
         for channel in interaction.guild.channels: # Go through every channel
             await channel.set_permissions(member, send_messages=None) # Make sure they can send messages again
-        embed=Embed(title=f"Member unmuted.", description="**{0}** was unmuted by **{1}**.".format(member, interaction.user), color=0xff00f6)
+        embed=Embed(title=f"Member unmuted.", description=f"{member.mention} was unmuted by {interaction.user.mention}.", color=0xff00f6)
         await interaction.followup.send(embed=embed, ephemeral=False)
 
     @app_commands.describe(
@@ -233,15 +239,12 @@ class Utility(commands.Cog):
                 "This command cannot be used in DMs.", ephemeral=True
             )
             return
-        colorOne = randint(0, 255)
-        colorTwo = randint(0, 255)
-        colorThree = randint(0, 255)
         if not user:
             user = interaction.user
         try:
             user: Member | None = interaction.guild.get_member(user.id)
             if user is None:
-                user: Member | None = interaction.guild.fetch_member(user.id)
+                user = interaction.guild.fetch_member(user.id)
                 if user is None:
                     await interaction.response.send_message(
                         "That user is not in this server.", ephemeral=True
@@ -253,11 +256,9 @@ class Utility(commands.Cog):
                 )
             return
         embed = Embed(
-        title = str(user.display_name) + "'s profile", description = "**Username:** " + str(user) + "\n" + "**User ID:** " + str(user.id), color = Colour.from_rgb(colorOne, colorTwo, colorThree))
+        title = str(user.display_name) + "'s profile", description = f"Username: {user}\nUser ID:{user.id}", color = Colour.from_rgb(randint(0, 255), randint(0, 255), randint(0, 255)))
         embed.add_field(name="Joined Server", value=user.joined_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
         embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
-        ##    await interaction.response.send_message(embed = ownProfileEmbed)
-        #else:
         await interaction.response.send_message(embed = embed)
 
 async def setup(bot:commands.Bot):

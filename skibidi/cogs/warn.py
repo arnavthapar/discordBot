@@ -2,6 +2,7 @@ from discord import Interaction, app_commands, User, Embed, Color
 from discord.ext import commands
 from mysql.connector import connect, Error
 from datetime import timedelta
+
 class Warn(commands.Cog):
     def __init__(self, bot:commands.Bot):
         self.bot = bot
