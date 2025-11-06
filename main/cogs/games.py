@@ -1,0 +1,341 @@
+from discord import Interaction, app_commands, ui, Embed, ButtonStyle#, File, Color
+from discord.ext import commands
+from random import choice
+from cogs.dictlist import di
+from random import randint
+from copy import deepcopy
+#from io import BytesIO
+#from PIL import Image, ImageDraw, ImageFont
+
+class LetterModal(ui.Modal, title="Guess a letter"):
+    letter = ui.TextInput(
+        label="Enter a single letter",
+        max_length=1,
+        placeholder="a-z",
+        required=True
+    )
+
+    def __init__(self, view):
+        super().__init__()
+        self.view = view
+
+    async def on_submit(self, interaction: Interaction):
+        guess = self.letter.value.lower()
+
+        # Retrieve game by message ID
+        game = self.view.games.get(interaction.message.id)
+        if not game:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        # Check if this user is the player who started the game
+        if interaction.user.id != game["player_id"]:
+            await interaction.response.send_message("You're not allowed to play this game.", ephemeral=True)
+            return
+
+        word = game["word"]
+        guessed = game["guessed"]
+        display = game["display"]
+        wrong = game["wrong"]
+        add = ""
+
+        # Game logic
+        if guess in word and guess not in guessed:
+            for i, letter in enumerate(word):
+                if letter == guess:
+                    display[i] = guess
+            guessed.append(guess)
+        elif guess not in word:
+            wrong.append(guess)
+        elif guess in guessed:
+            add = "You already guessed that letter."
+        else:
+            guessed.append(guess)
+
+        shown = "".join(display)
+        hangman_stage = self.view.pics[min(len(wrong), len(self.view.pics) - 1)]
+        description = f"{hangman_stage}\n\n`{shown}`\n\n{add}"
+        embed = Embed(title="Hangman", description=description)
+
+        # Check win/loss conditions
+        if "-" not in display:
+            embed.description += "\nYou won!"
+            self.view.clear_items()
+        elif len(wrong) >= len(self.view.pics) - 1:
+            embed.description += f"\nYou lost! The word was **{word}**."
+            self.view.clear_items()
+
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+class MineModal(ui.Modal, title="Guess a Space"):
+    letter = ui.TextInput(
+        label="Enter a row and column.",
+        max_length=2,
+        placeholder="a-i, 1-9 (ex. a1, b8, i9, g6)",
+        required=True
+    )
+
+    def __init__(self, view):
+        super().__init__()
+        self.view = view
+    async def checkWin(self, external, internal): #check if won
+            for i in range(9):
+                for j in range(9):
+                    if external[i][j] == "#":
+                        if internal[i][j] != "m": return False
+            return True
+    async def revealCoords(self, external, internal, x, y):
+        # If mine -> game over
+        if internal[x][y] == "m":
+            external[x][y] = internal[x][y]
+            return True
+
+        # Reveal number or empty
+        external[x][y] = internal[x][y]
+
+        # If it's a blank (0), reveal neighbors
+        if internal[x][y] == 0:
+            for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < len(internal) and 0 <= ny < len(internal[0]) and external[nx][ny] == "#":
+                    await self.revealCoords(external, internal, nx, ny)
+
+        return False
+    async def on_submit(self, interaction:Interaction):
+        coords = self.letter.value.lower()
+
+        # Retrieve game by message ID
+        game = self.view.games.get(interaction.message.id)
+        if not game:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        # Check if this user is the player who started the game
+        if interaction.user.id != game["player_id"]:
+            await interaction.response.send_message("This isn't your game!.", ephemeral=True)
+            return
+
+        internal = game["board"]
+        external = game["shown"]
+        win = False
+        lose = False
+        extra = ""
+        cy = {"a":0, "b":1, "c":2, "d":3, "e":4, "f":5, "g":6, "h":7, "i":8} #dictionary for y coordinates
+        if len(coords) > 1 and (coords[0] in cy and (coords[1] in ["1", "2", "3", "4", "5", "6", "7", "8", "9"])):
+            x = cy[coords[0]]
+            y = int(coords[1]) - 1
+            if external[x][y] == "#": lose = await self.revealCoords(external, internal, x, y) # Empty square, call function
+            else: extra = "That square has already been revealed.\n" # This square has already been revealed
+        else: extra = "Sorry, those coordinates don't make sense. \nPut a letter from a - i for the row, then a number from 1 - 9 for the column.\n"
+        win = await self.checkWin(external, internal)
+        '''
+        colors = {
+            "#": (70, 70, 70),
+            "m": (220, 20, 60),
+            1: (0, 128, 255),
+            2: (0, 180, 0),
+            3: (255, 50, 50),
+            4: (0, 0, 180),
+            5: (180, 0, 0),
+            6: (0, 200, 200),
+            7: (100, 100, 100),
+            8: (200, 200, 200),
+            0: (200, 200, 200)
+        }
+
+        # Rendering parameters
+        cell_size = 40
+        padding = 5
+        font = ImageFont.load_default()
+
+        width = len(external[0]) * cell_size
+        height = len(external) * cell_size
+
+        img = Image.new("RGB", (width, height), (50, 50, 50))
+        draw = ImageDraw.Draw(img)
+
+        for y, row in enumerate(external):
+            for x, val in enumerate(row):
+                x0 = x * cell_size
+                y0 = y * cell_size
+                color = colors.get(val, (255, 255, 255))
+                draw.rectangle([x0, y0, x0 + cell_size, y0 + cell_size], fill=(30, 30, 30), outline=(80, 80, 80))
+                if val != 0:
+                    text = str(val) if val not in ["#", "m"] else "💣" if val == "m" else "■"
+                    left, top, right, bottom = font.getbbox(text)
+
+                    # Calculate width and height
+                    text_w = right - left
+                    text_h = bottom - top
+                    draw.text((x0 + (cell_size - text_w) / 2, y0 + (cell_size - text_h) / 2), text, fill=color, font=font)
+
+        # Save to memory
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        file = File(buffer, filename="minesweeper.png")
+        embed = Embed(title="Minesweeper", color=Color.blurple())
+        embed.set_image(url="attachment://minesweeper.png")
+        '''
+        board = "  1 2 3 4 5 6 7 8 9\na "
+        for idx, i in enumerate(external):
+            for x in i:
+                if x == "m":
+                    board += "💣 "
+                else:
+                    board += str(x) + " "
+            if idx != 8:
+                board += f"\n{chr(ord('a')+idx + 1)} "
+        embed = Embed(title="Minesweeper", description=f"```\n{board}```\n{extra}")
+
+        # Check win/loss conditions
+        if win:
+            embed.description = f"```\n{board}```\n\nYou won!"
+            self.view.clear_items()
+        elif lose:
+            embed.description = f"```\n{board}```\n\nYou lost!."
+            self.view.clear_items()
+        await interaction.response.edit_message(embed=embed, view=self.view)#, attachments=(file,))
+
+
+class MinesweeperView(ui.View):
+    def __init__(self, bot: commands.Bot, games, player_id: int):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.games = games
+        self.player_id = player_id  # The user who started the game
+
+    @ui.button(label="Guess a Space", style=ButtonStyle.primary, custom_id="guess_button")
+    async def guess_button(self, interaction: Interaction, _: ui.Button):
+        # Only the player who started the game can press this button
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("This isn't your game!", ephemeral=True)
+            return
+
+        modal = MineModal(self)
+        await interaction.response.send_modal(modal)
+
+class HangmanView(ui.View):
+    def __init__(self, bot: commands.Bot, games, pics, player_id: int):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.games = games
+        self.pics = pics
+        self.player_id = player_id  # The user who started the game
+
+    @ui.button(label="Guess a Letter", style=ButtonStyle.primary, custom_id="guess_button")
+    async def guess_button(self, interaction: Interaction, _: ui.Button):
+        # Only the player who started the game can press this button
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("This isn't your game!", ephemeral=True)
+            return
+
+        modal = LetterModal(self)
+        await interaction.response.send_modal(modal)
+
+class Games(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.games = {}
+        self.baseMines = [["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"], ["#", "#", "#", "#", "#", "#", "#", "#", "#"]]
+        self.pics = (
+            "```\n  +---+\n  |   |\n      |\n      |\n      |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n      |\n      |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n  |   |\n      |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n /|   |\n      |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n /|\\  |\n      |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n /|\\  |\n /    |\n      |\n=========\n```",
+            "```\n  +---+\n  |   |\n  O   |\n /|\\  |\n / \\  |\n      |\n=========\n```"
+        )
+
+    group = app_commands.Group(name="games", description="Games commands")
+
+    async def checkSurroundings(self, array, x, y): # Determine how many mines are around a given square
+        answer = 0
+        if x > 0 and array[x - 1][y] == "m":
+            answer += 1
+        if x < 8 and array[x + 1][y] == "m":
+            answer += 1
+        if y > 0 and array[x][y - 1] == "m":
+            answer += 1
+        if y < 8 and array[x][y + 1] == "m":
+            answer += 1
+        if x > 0 and y > 0 and array[x - 1][y - 1] == "m":
+            answer += 1
+        if x < 8 and y < 8 and array[x + 1][y + 1] == "m":
+            answer += 1
+        if x < 8 and y > 0 and array[x + 1][y - 1] == "m":
+            answer += 1
+        if x > 0 and y < 8 and array[x - 1][y + 1] == "m":
+            answer += 1
+        return answer
+    @group.command(name="hangman", description="Play hangman.")
+    @app_commands.describe(word="Optional word to use")
+    async def hangman(self, interaction: Interaction, word: str = None):
+        if word is None:
+            word = choice(di)
+        word = word.lower()
+
+        display = ["-" for _ in word]
+        guessed = []
+        wrong = []
+
+        embed = Embed(
+            title="Hangman",
+            description=f"{self.pics[0]}\n\n`{''.join(display)}`"
+        )
+
+        # Create a view tied to the player
+        view = HangmanView(self.bot, self.games, self.pics, player_id=interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view)
+        sent_msg = await interaction.original_response()
+
+        # Store the game data
+        self.games[sent_msg.id] = {
+            "word": word,
+            "guessed": guessed,
+            "display": display,
+            "wrong": wrong,
+            "player_id": interaction.user.id
+        }
+    @group.command(name="minesweeper", description="Play minesweeper.")
+    async def minesweeper(self, interaction: Interaction):
+        board = "  1 2 3 4 5 6 7 8 9\na "
+        for idx, i in enumerate(self.baseMines):
+            for l in i:
+                board += l + " "
+            if idx != 8:
+                board += f"\n{chr(ord('a')+idx + 1)} "
+        embed = Embed(
+            title="Minesweeper",
+            description=f"```\n{board}\n```"
+        )
+        view = MinesweeperView(self.bot, self.games, player_id=interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view)
+        sent_msg = await interaction.original_response()
+        counter = 10
+        internal = deepcopy(self.baseMines)
+        while counter > 0:
+            x = randint(0, 8)
+            y = randint(0, 8)
+            if internal[x][y] != "m":
+                internal[x][y] = "m"
+                counter -= 1
+        # Finish generating internal
+        checked = 0
+        for i in range(9):
+            for j in range(9):
+                if internal[i][j] != "m":
+                    checked = await self.checkSurroundings(internal, i, j)
+                    internal[i][j] = checked
+
+        self.games[sent_msg.id] = {
+            "board": internal,
+            "shown": deepcopy(self.baseMines),
+            "player_id": interaction.user.id
+        }
+
+
+async def setup(bot):
+    await bot.add_cog(Games(bot))
