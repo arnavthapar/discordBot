@@ -12,16 +12,15 @@ class Extras(commands.Cog):
     @app_commands.describe(question="The question to ask the 8-Ball")
     async def ball(self, interaction:Interaction, question:str):
         embed = Embed(
-            title='🎱 The 8-Ball says,',
-            description=f"\"{choice(('Yes.', 'No.', 'I doubt it.', 'Absolutely not.', 'For sure.', 'Maybe.', 'Indeed.', 'False.'))}\"",
+            title='🎱 8-Ball,',
+            description=f"{interaction.user.mention} asks, \"{question}\"\nThe 8-ball says, \"{choice(('Yes.', 'No.', 'I doubt it.', 'Absolutely not.', 'For sure.', 'Maybe.', 'Indeed.', 'False.', "You might just be incredibely stupid.", "Sure?", "What are you talking about?", "You have been reported to the FBI.", "Definitely.", "Absolutely.", "Probably not."))}\"",
             color=0x5b5eeb
         )
-        await interaction.response.send_message(f"{interaction.user.mention} asks, \"{question}\"", embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name='flip-coin', description='Flips a coin.')
     async def flip_coin(self, interaction:Interaction):
         embed = Embed(title="Flip a Coin", description=f"The coin landed on {choice(('heads', 'tails'))}.", color=Color.from_rgb(150, 150, 150))
-        embed.set_thumbnail(url=interaction.user.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name='thick-of-it', description='Replies with the entire Thick of it lyrics.')
@@ -49,31 +48,41 @@ class Extras(commands.Cog):
 
     @app_commands.command(name='sync', description='owner only syncing')
     @app_commands.describe(us='u', ms="ye")
-    async def sync(self, interaction: Interaction, us:User=None, ms:str=None):
-        if (ms == 'SYNC') or (us == None):
-            await interaction.response.defer()
+    async def sync(self, interaction: Interaction, us: User = None, ms: str = None):
+        if interaction.user.id != self.bot.owner_id:
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+            return
+
+        # Case 1: Global sync
+        if (ms == 'SYNC') or (us is None):
+            await interaction.response.defer(ephemeral=True)
             await self.bot.tree.sync()
             await interaction.followup.send('Done', ephemeral=True)
             return
-        # Check if the user invoking the command is the bot owner
-        app_owner = (await self.bot.application_info()).owner
-        if interaction.user.id != app_owner.id:
-            await interaction.response.send_message(
-                "You do not have permission to use this command.", ephemeral=True
-            )
-            return
+
+        # Case 2: DM a user (owner only)
         try:
             await us.send(ms)
             est_time = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
             timestamp = est_time.strftime("%Y-%m-%d %H:%M:%S")
 
-            # Log the DM with timestamp
-            log_line = f"[{timestamp}] [SENT] To {us}: {ms}"
+            # Log the DM
             with open("dm_log.log", "a", encoding="utf-8") as f:
-                f.write(log_line + "\n")
-            await interaction.response.send_message(f"Sent a DM to {us.display_name}.", ephemeral=True)
+                f.write(f"[{timestamp}] [SENT] To {us}: {ms}\n")
+
+            # ✅ Use followup.send if already acknowledged
+            if interaction.response.is_done():
+                await interaction.followup.send(f"Sent a DM to {us.display_name}.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Sent a DM to {us.display_name}.", ephemeral=True)
+
         except Exception as e:
-            await interaction.response.send_message(f"Could not send DM: {e}", ephemeral=True)
+            # Same logic for error handling
+            if interaction.response.is_done():
+                await interaction.followup.send(f"Could not send DM: {e}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Could not send DM: {e}", ephemeral=True)
+
 
 
 
