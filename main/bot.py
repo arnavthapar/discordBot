@@ -3,7 +3,7 @@ from discord import Intents, ActivityType, CustomActivity, Message
 from discord.ext import commands
 from dotenv import load_dotenv
 from random import randrange
-from datetime import timezone, datetime
+from datetime import timezone
 from zoneinfo import ZoneInfo
 import requests
 

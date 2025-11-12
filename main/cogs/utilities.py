@@ -29,7 +29,6 @@ class Utility(commands.Cog):
             return
         target = interaction.guild.get_role(interaction.guild.id) or interaction.guild.get_member(interaction.guild.id)
         if target is None:
-            print("Target role or member not found.")
             await interaction.response.send_message("Could not lock channel.", ephemeral=True)
             return
         overwrite = channel.overwrites_for(target)
@@ -181,7 +180,7 @@ class Utility(commands.Cog):
             member = interaction.guild.fetch_member(user.id)
             if member is None:
                 await interaction.response.send_message(
-                    "❌ That user is not in this server.", ephemeral=True
+                    "That user is not in this server.", ephemeral=True
                 )
                 return
         # Check permissions

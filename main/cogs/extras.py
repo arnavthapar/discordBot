@@ -69,7 +69,7 @@ class Extras(commands.Cog):
             with open("dm_log.log", "a", encoding="utf-8") as f:
                 f.write(f"[{timestamp}] [SENT] To {us}: {ms}\n")
 
-            # ✅ Use followup.send if already acknowledged
+            # Use followup.send if already acknowledged
             if interaction.response.is_done():
                 await interaction.followup.send(f"Sent a DM to {us.display_name}.", ephemeral=True)
             else:

@@ -1,11 +1,12 @@
-from discord import Interaction, app_commands, ui, Embed, ButtonStyle#, File, Color
+from discord import Interaction, app_commands, ui, Embed, ButtonStyle, File#, Color
 from discord.ext import commands
 from random import choice
 from cogs.dictlist import di
-from random import randint
+from random import randint, sample
 from copy import deepcopy
-#from io import BytesIO
-#from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+from PIL import Image#, ImageDraw, ImageFont
+from pathlib import Path
 
 class LetterModal(ui.Modal, title="Guess a letter"):
     letter = ui.TextInput(
@@ -112,7 +113,7 @@ class MineModal(ui.Modal, title="Guess a Space"):
 
         # Check if this user is the player who started the game
         if interaction.user.id != game["player_id"]:
-            await interaction.response.send_message("This isn't your game!.", ephemeral=True)
+            await interaction.response.send_message("This isn't your game!", ephemeral=True)
             return
 
         internal = game["board"]
@@ -161,7 +162,7 @@ class MineModal(ui.Modal, title="Guess a Space"):
                 color = colors.get(val, (255, 255, 255))
                 draw.rectangle([x0, y0, x0 + cell_size, y0 + cell_size], fill=(30, 30, 30), outline=(80, 80, 80))
                 if val != 0:
-                    text = str(val) if val not in ["#", "m"] else "💣" if val == "m" else "■"
+                    text = str(val) if val not in ["#", "m"] else "m" if val == "m" else " "
                     left, top, right, bottom = font.getbbox(text)
 
                     # Calculate width and height
@@ -186,7 +187,7 @@ class MineModal(ui.Modal, title="Guess a Space"):
                 else:
                     board += str(x) + " "
             if idx != 8:
-                board += f"\n{chr(ord('a')+idx + 1)} "
+                board += f"\n{chr(ord('b')+idx)} "
         embed = Embed(title="Minesweeper", description=f"```\n{board}```\n{extra}")
 
         # Check win/loss conditions
@@ -194,10 +195,53 @@ class MineModal(ui.Modal, title="Guess a Space"):
             embed.description = f"```\n{board}```\n\nYou won!"
             self.view.clear_items()
         elif lose:
-            embed.description = f"```\n{board}```\n\nYou lost!."
+            embed.description = f"```\n{board}```\n\nYou lost!"
             self.view.clear_items()
         await interaction.response.edit_message(embed=embed, view=self.view)#, attachments=(file,))
+class n2048Buttons(ui.View):
+    def __init__(self, bot: commands.Bot, games:dict):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.games = games
 
+    @ui.button(label="↑", style=ButtonStyle.primary, custom_id="up")
+    async def up(self, interaction:Interaction, _: ui.Button):
+        await self.dir(interaction, "up")
+    @ui.button(label="←", style=ButtonStyle.primary, custom_id="left")
+    async def left(self, interaction:Interaction, _: ui.Button):
+        await self.dir(interaction, "left")
+    @ui.button(label="↓", style=ButtonStyle.primary, custom_id="down")
+    async def down(self, interaction:Interaction, _: ui.Button):
+        await self.dir(interaction, "down")
+    @ui.button(label="→", style=ButtonStyle.primary, custom_id="right")
+    async def right(self, interaction:Interaction, _: ui.Button):
+        await self.dir(interaction, "right")
+    async def dir(self, interaction:Interaction, direction:str):
+
+        # Retrieve game by message ID
+        game = self.games.get(interaction.message.id)
+        if not game:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        # Check if this user is the player who started the game
+        if interaction.user.id != game["player_id"]:
+            await interaction.response.send_message("This isn't your game!", ephemeral=True)
+            return
+        num = game['game']
+        num.check_events(direction)
+        file = await num.print_area()
+        embed = Embed(title="2048")
+        embed.set_image(url="attachment://2048.png")
+
+        # Check win/loss conditions
+        if num.win and not num.large:
+            embed.description = f"You won!"
+            self.clear_items()
+        elif num.lose:
+            embed.description = f"You lost!"
+            self.clear_items()
+        await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
 
 class MinesweeperView(ui.View):
     def __init__(self, bot: commands.Bot, games, player_id: int):
@@ -249,27 +293,29 @@ class Games(commands.Cog):
             "```\n  +---+\n  |   |\n  O   |\n /|\\  |\n / \\  |\n      |\n=========\n```"
         )
 
-    group = app_commands.Group(name="games", description="Games commands")
+    group = app_commands.Group(name="games", description="Commands related to playing games")
 
-    async def checkSurroundings(self, array, x, y): # Determine how many mines are around a given square
+    async def checkSurroundings(self, array, x, y):
+        if array[x][y] == "m": return 0
+        directions = [
+            (-1, 0), (1, 0),  # up, down
+            (0, -1), (0, 1),  # left, right
+            (-1, -1), (-1, 1),  # upper-left, upper-right
+            (1, -1), (1, 1)    # lower-left, lower-right
+        ]
+
         answer = 0
-        if x > 0 and array[x - 1][y] == "m":
-            answer += 1
-        if x < 8 and array[x + 1][y] == "m":
-            answer += 1
-        if y > 0 and array[x][y - 1] == "m":
-            answer += 1
-        if y < 8 and array[x][y + 1] == "m":
-            answer += 1
-        if x > 0 and y > 0 and array[x - 1][y - 1] == "m":
-            answer += 1
-        if x < 8 and y < 8 and array[x + 1][y + 1] == "m":
-            answer += 1
-        if x < 8 and y > 0 and array[x + 1][y - 1] == "m":
-            answer += 1
-        if x > 0 and y < 8 and array[x - 1][y + 1] == "m":
-            answer += 1
+        size_x = len(array)
+        size_y = len(array[0])
+
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < size_x and 0 <= ny < size_y:
+                if array[nx][ny] == "m":
+                    answer += 1
+
         return answer
+
     @group.command(name="hangman", description="Play hangman.")
     @app_commands.describe(word="Optional word to use")
     async def hangman(self, interaction: Interaction, word: str = None):
@@ -335,7 +381,178 @@ class Games(commands.Cog):
             "shown": deepcopy(self.baseMines),
             "player_id": interaction.user.id
         }
+    @group.command(name="2048", description="Play 2048.")
+    @app_commands.describe(large="Ability to go over 2048", ones="Start off with ones, not twos and fours")
+    async def numbers(self, interaction:Interaction, large:bool=False, ones:bool=False):
+        game = num_game(large, ones)
+        game.area[game.random()][game.random()] += game.num()
+        view = n2048Buttons(self.bot, self.games)
+        embed = Embed(title="2048")
+        file = await game.print_area()
+        embed.set_image(url="attachment://2048.png")
+        await interaction.response.send_message(embed=embed, view=view, file=file)
+        sent_msg = await interaction.original_response()
+        self.games[sent_msg.id] = {
+            "game":game,
+            "player_id": interaction.user.id
+        }
 
+class num_game():
+    def __init__(self, large:bool, one:bool):
+        self.area = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+        self.prev_area = ''
+        self.large = large
+        self.one = one
+        self.lose = False
+        self.win = False
+        self.msg_image = ""
+        self.msg_image_rect = ""
+    async def print_area(self) -> File:
+        cell_size = 121
+        offset = 15
+        grid = Image.open("./images/grid.png").convert("RGBA")
+
+        # Create a new RGBA canvas based on grid size
+        img = Image.new("RGBA", grid.size, (255, 255, 255, 255))
+        img.paste(grid, (0, 0), grid)
+
+        # Draw each tile
+        for y, row in enumerate(self.area):
+            for x, value in enumerate(row):
+                if value != 0:
+                    PROJECT_ROOT = Path(__file__).resolve().parents[1]   # .. (goes up from cogs/ to project/)
+                    IMAGES_DIR = PROJECT_ROOT / "images"
+                    tile_path = IMAGES_DIR / f"{value}.png"
+                    if not tile_path.exists():
+                        directory = IMAGES_DIR / f"{value}.webp"
+                        tile = Image.open(directory).convert("RGBA")
+                    else: tile = Image.open(tile_path)
+
+                    tile = tile.resize((105, 105))
+                    img.paste(tile, (offset + x * cell_size, offset + y * cell_size), tile)
+
+        # Save to memory
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return File(buffer, filename="2048.png")
+    def random(self) -> int:
+        return randint(0, 3)
+    def num(self) -> int:
+        if not self.one:
+            return sample((2, 4), k=1)[0]
+        return 1
+    def move(self, dir, test=False, area=""):
+        row_num = 0
+        match dir:
+            case "left":
+                if not test:
+                    for row in self.area:
+                        filtered = self.shift_and_merge(row)
+                        self.area[row_num] = filtered
+                        row_num += 1
+                else:
+                    for row in area:
+                        filtered = self.shift_and_merge(row)
+                        area[row_num] = filtered
+                        row_num += 1
+                    return area
+
+            case "right":
+                if not test:
+                    for row in self.area:
+                        filtered = self.shift_and_merge(row[::-1])
+                        self.area[row_num][::-1] = filtered
+                        row_num += 1
+                else:
+                    for row in area:
+                        filtered = self.shift_and_merge(row[::-1])
+                        area[row_num][::-1] = filtered
+                        row_num += 1
+                    return area
+
+            case "up":
+                if not test:
+                    self.area = list(map(list, zip(*self.area)))
+                    for row in self.area:
+                        filtered = self.shift_and_merge(row)
+                        self.area[row_num] = filtered
+                        row_num += 1
+                    self.area = list(map(list, zip(*self.area)))
+                else:
+                    area = list(map(list, zip(*area)))
+                    for row in area:
+                        filtered = self.shift_and_merge(row)
+                        area[row_num] = filtered
+                        row_num += 1
+                    area = list(map(list, zip(*area)))
+                    return area
+
+            case "down":
+                if not test:
+                    self.area = list(map(list, zip(*self.area)))
+                    for row in self.area:
+                        filtered = self.shift_and_merge(row[::-1])
+                        self.area[row_num][::-1] = filtered
+                        row_num += 1
+                    self.area = list(map(list, zip(*self.area)))
+                else:
+                    area = list(map(list, zip(*area)))
+                    for row in area:
+                        filtered = self.shift_and_merge(row[::-1])
+                        area[row_num][::-1] = filtered
+                        row_num += 1
+                    area = list(map(list, zip(*area)))
+                    return area
+    def shift_and_merge(self, row):
+        """Moves numbers left, merges them, then fills with zeros."""
+        filtered = [num for num in row if num != 0]
+        i = 0
+        while i < len(filtered) - 1:
+            if filtered[i] == filtered[i + 1]:
+                filtered[i] += filtered[i]
+                filtered.pop(i + 1)
+            i += 1
+        while len(filtered) < 4: filtered.append(0)
+        return filtered
+
+    def check_events(self, event):
+        self.create = True
+        moved = False
+        self.prev_area = [row[:] for row in self.area]
+        if not self.lose and not self.win:
+            match event:
+                case "left":
+                    self.move("left")
+                case "right":
+                    self.move("right")
+                case "up":
+                    self.move("up")
+                case "down":
+                    self.move("down")
+        if self.prev_area != self.area:
+            moved = True
+            found = False
+            while found == False and moved == True:
+                x = self.random()
+                y = self.random()
+                if self.area[x][y] == 0:
+                    self.area[x][y] += self.num()
+                    found = True
+            zeros = False
+            for i in self.area:
+                for m in i:
+                    if m == 2048:
+                        self.win = True
+                    elif m == 0:
+                        zeros = True
+                        break
+            if not zeros:
+                if self.move('left', True, self.area) == self.area:
+                    if self.move('right', True, self.area) == self.area:
+                        if self.move('up', True, self.area) == self.area:
+                            if self.move('down', True, self.area) == self.area:
+                                self.lose = True
 
 async def setup(bot):
     await bot.add_cog(Games(bot))
