@@ -1,8 +1,7 @@
 from discord import Interaction, app_commands, ui, Embed, ButtonStyle, File#, Color
 from discord.ext import commands
-from random import choice
 from cogs.dictlist import di
-from random import randint, sample
+from random import randint, choice#, sample
 from copy import deepcopy
 from io import BytesIO
 from PIL import Image#, ImageDraw, ImageFont
@@ -200,7 +199,7 @@ class MineModal(ui.Modal, title="Guess a Space"):
         await interaction.response.edit_message(embed=embed, view=self.view)#, attachments=(file,))
 class n2048Buttons(ui.View):
     def __init__(self, bot: commands.Bot, games:dict):
-        super().__init__(timeout=None)
+        super().__init__()
         self.bot = bot
         self.games = games
 
@@ -216,8 +215,8 @@ class n2048Buttons(ui.View):
     @ui.button(label="→", style=ButtonStyle.primary, custom_id="right")
     async def right(self, interaction:Interaction, _: ui.Button):
         await self.dir(interaction, "right")
-    async def dir(self, interaction:Interaction, direction:str):
 
+    async def dir(self, interaction:Interaction, direction:str):
         # Retrieve game by message ID
         game = self.games.get(interaction.message.id)
         if not game:
@@ -440,7 +439,7 @@ class num_game():
         return randint(0, 3)
     def num(self) -> int:
         if not self.one:
-            return sample((2, 4), k=1)[0]
+            return choice((2, 4))
         return 1
     def move(self, dir, test=False, area=""):
         row_num = 0

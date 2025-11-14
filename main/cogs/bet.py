@@ -71,7 +71,9 @@ class Gamble(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="bet", description="Bet QTC coins.")
+    group = app_commands.Group(name="coins", description="Commands related to using QTC coins")
+
+    @group.command(name="bet", description="Bet QTC coins.")
     @app_commands.describe(
         amount="Amount of QTC coins to bet",
         side="The side of the coin you are betting on"
@@ -81,7 +83,7 @@ class Gamble(commands.Cog):
         app_commands.Choice(name="Tails", value="Tails"),
         app_commands.Choice(name="Middle", value="Middle")
     ])
-    async def bet(self, interaction: Interaction, amount: int, side:app_commands.Choice[str]="Heads"):
+    async def bet(self, interaction: Interaction, amount: int, side:str="Heads"):
         if interaction.guild is None:
             await interaction.response.send_message(
                 "This command cannot be used in DMs.", ephemeral=True
@@ -100,7 +102,7 @@ class Gamble(commands.Cog):
 
         # If user not found, insert with 10 starting coins
         if row is None:
-            cursor.execute(f'INSERT INTO coins(user, server, coins, gifted) VALUES("{user_id}", "{guild_id}", 10, 0);')
+            cursor.execute(f'INSERT INTO coins(user, server) VALUES("{user_id}", "{guild_id}");')
             coin_amount = 10
         else:
             coin_amount = int(row[0])
@@ -129,10 +131,7 @@ class Gamble(commands.Cog):
             coin = "Middle"
         # coin = "Heads"
         # Update balance
-        if side == "Heads":
-                coin_amount += (amount * (2 * (coin == side) - 1))
-        else:
-                coin_amount += (amount * (2 * (coin == side.name) - 1))
+        coin_amount += (amount * (2 * (coin == side) - 1))
 
         # Prevent 0 balance
         if coin == "Middle":
@@ -162,7 +161,7 @@ class Gamble(commands.Cog):
     # @skibidi-bot: 1342990342999248936
     # ryans alt: 1324882449049583657
 
-    @app_commands.command(name="gift", description="Gift QTC coins.")
+    @group.command(name="gift", description="Gift QTC coins.")
     @app_commands.describe(
         amount="Amount of QTC coins to gift",
         member="Person to give QTC coins",
@@ -192,7 +191,7 @@ class Gamble(commands.Cog):
 
         if row == []:
             # If giver doesn't exist, give them 10 starter coins
-            cursor.execute(f'INSERT INTO coins(user, server, coins, gifted) VALUES("{giver_id}", "{guild_id}", 10, 0);')
+            cursor.execute(f'INSERT INTO coins(user, server) VALUES("{giver_id}", "{guild_id}");')
             #cnx.commit()
             giver_coins = 10
         else:
@@ -224,7 +223,7 @@ class Gamble(commands.Cog):
         row = cursor.fetchone()
 
         if row is None:
-            cursor.execute(f'INSERT INTO coins(user, server, coins, gifted) VALUES("{receiver_id}", "{guild_id}", {10 + amount}, 0);')
+            cursor.execute(f'INSERT INTO coins(user, server, coins) VALUES("{receiver_id}", "{guild_id}", {10 + amount});')
         else:
             receiver_coins = int(row[0]) + amount
             cursor.execute(f'UPDATE coins SET coins="{receiver_coins}" WHERE user="{receiver_id}" AND server="{guild_id}";')
@@ -234,9 +233,7 @@ class Gamble(commands.Cog):
         cursor.close()
         await interaction.response.send_message(f"{interaction.user.mention} has gifted {member.mention} {amount} coin{'s' if amount != 1 else ''}{f" because of the reason: {reason}" if reason != None else ""}!",)
 
-    @app_commands.command(
-        name="leaderboard", description="Check the QTC coin leaderboard."
-    )
+    @group.command(name="leaderboard", description="Check the QTC coin leaderboard.")
     async def lb(self, interaction: Interaction):
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -270,7 +267,7 @@ class Gamble(commands.Cog):
         embed.set_thumbnail(url=imageUrl)
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(
+    @group.command(
         name="check-balance", description="Check the QTC coin balance of a user."
     )
     @app_commands.describe(member="Person to check the balance of")
@@ -288,7 +285,7 @@ class Gamble(commands.Cog):
         cursor.execute(f'SELECT * FROM coins WHERE user="{member.id}" AND server="{interaction.guild.id}";')
         coins = cursor.fetchall()
         if coins == []:
-            cursor.execute(f'INSERT INTO coins(user, server, coins, gifted) VALUES("{member.id}", "{interaction.guild.id}", 10, 0)')
+            cursor.execute(f'INSERT INTO coins(user, server) VALUES("{member.id}", "{interaction.guild.id}")')
             cnx.commit()
             amount = 10
         else:

@@ -14,9 +14,7 @@ class Warn(commands.Cog):
     )
     async def warn(self, interaction: Interaction, member:User, reason:str="None"):
         if interaction.guild is None:
-            await interaction.response.send_message(
-                "This command cannot be used in DMs.", ephemeral=True
-            )
+            await interaction.response.send_message("This command cannot be used in DMs.", ephemeral=True)
             return
         # Check permissions
         if not ((interaction.user.guild_permissions.mute_members) or (interaction.user.id == self.bot.owner_id)):

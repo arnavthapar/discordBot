@@ -42,7 +42,7 @@ async def on_ready():
     bot.owner_id = (await bot.application_info()).owner.id
 @bot.event
 async def on_message(message:Message):
-    if message.author == bot.user:
+    if (message.author == bot.user):
         return
 
     if message.content == ('skibidi toilet') and randrange(1, 4) == 1:
@@ -51,66 +51,68 @@ async def on_message(message:Message):
         await message.add_reaction(bot.get_emoji(1349534044500525237))
                 # Ignore messages from the bot itself
 
-    # Convert UTC to EST (handles Daylight Saving automatically)
+    if (message.guild != None) and not (bot.user.mentioned_in(message) and not message.mention_everyone):
+        return
+
+    # Convert UTC to EST
     est_time = message.created_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/New_York"))
     timestamp = est_time.strftime("%Y-%m-%d %H:%M:%S")
-    if 1 == 1:
-        image_info = ""
-        forward_info = ""
-        embed_info = ""
-        poll_info = ""
-        if hasattr(message, "forwarded_messages") and message.forwarded_messages:
-            forward_info_list = []
-            for fwd in message.forwarded_messages:
-                fwd_summary = f"{fwd.author}: {fwd.content[:80]!r}"
-                if fwd.attachments:
-                    fwd_summary += f" [{len(fwd.attachments)} attachments]"
-                if fwd.embeds:
-                    fwd_summary += f" [{len(fwd.embeds)} embeds]"
-                forward_info_list.append(fwd_summary)
-            forward_info = " [FORWARDS: " + " | ".join(forward_info_list) + "]"
-        # Handle attachments (e.g., images)
-        if message.attachments:
-            os.makedirs("dm_images", exist_ok=True)
-            for attachment in message.attachments:
-                filename = f"dm_images/{timestamp.replace(':', '-')}_{attachment.filename}"
-                try:
-                    # Download file
-                    r = requests.get(attachment.url)
-                    with open(filename, "wb") as f:
-                        f.write(r.content)
-                    image_info += f" [IMAGE: {filename}]"
-                except Exception as e:
-                    image_info += f" [IMAGE_DOWNLOAD_FAILED: {e}]"
+    image_info = ""
+    forward_info = ""
+    embed_info = ""
+    poll_info = ""
+    if hasattr(message, "forwarded_messages") and message.forwarded_messages:
+        forward_info_list = []
+        for fwd in message.forwarded_messages:
+            fwd_summary = f"{fwd.author}: {fwd.content[:80]!r}"
+            if fwd.attachments:
+                fwd_summary += f" [{len(fwd.attachments)} attachments]"
+            if fwd.embeds:
+                fwd_summary += f" [{len(fwd.embeds)} embeds]"
+            forward_info_list.append(fwd_summary)
+        forward_info = " [FORWARDS: " + " | ".join(forward_info_list) + "]"
+    # Handle attachments (e.g., images)
+    if message.attachments:
+        os.makedirs("dm_images", exist_ok=True)
+        for attachment in message.attachments:
+            filename = f"dm_images/{timestamp.replace(':', '-')}_{attachment.filename}"
+            try:
+                # Download file
+                r = requests.get(attachment.url)
+                with open(filename, "wb") as f:
+                    f.write(r.content)
+                image_info += f" [IMAGE: {filename}]"
+            except Exception as e:
+                image_info += f" [IMAGE_DOWNLOAD_FAILED: {e}]"
 
-        # Handle embeds (e.g., link previews, rich embeds)
-        if message.embeds:
-            for e in message.embeds:
-                if e.title or e.description:
-                    embed_info += f" [EMBED: title='{e.title}' desc='{e.description[:50]}...']"
-                else:
-                    embed_info += " [EMBED: (generic)]"
+    # Handle embeds (e.g., link previews, rich embeds)
+    if message.embeds:
+        for e in message.embeds:
+            if e.title or e.description:
+                embed_info += f" [EMBED: title='{e.title}' desc='{e.description[:50]}...']"
+            else:
+                embed_info += " [EMBED: (generic)]"
 
-        # Handle polls (Discord polls)
-        if hasattr(message, "poll") and message.poll:
-            question = message.poll.question
-            options = [opt.text for opt in message.poll.answers]
-            poll_info = f" [POLL: '{question}' | Options: {', '.join(options)}]"
+    # Handle polls (Discord polls)
+    if hasattr(message, "poll") and message.poll:
+        question = message.poll.question
+        options = [opt.text for opt in message.poll.answers]
+        poll_info = f" [POLL: '{question}' | Options: {', '.join(options)}]"
 
-        # Log line
-        if message.guild == None:
-            log_line = f"[{timestamp}] [DM] {message.author}: {message.content}{poll_info}{image_info}{embed_info}{forward_info}"
-        elif bot.user.mentioned_in(message) and not message.mention_everyone:
-            log_line = f"[{timestamp}] [{message.guild.name}] {message.author}: {message.content}{poll_info}{embed_info}{forward_info}"
+    # Log line
+    if message.guild == None:
+        log_line = f"[{timestamp}] [DM] {message.author}: {message.content}{poll_info}{image_info}{embed_info}{forward_info}"
+    elif bot.user.mentioned_in(message) and not message.mention_everyone:
+        log_line = f"[{timestamp}] [{message.guild.name}] {message.author}: {message.content}{poll_info}{embed_info}{forward_info}"
 
-        print(log_line)
+    print(log_line)
 
-        # Write to file
-        try:
-            with open("dm_log.log", "a", encoding="utf-8") as f:
-                f.write(log_line + "\n")
-        except Exception as e:
-            print(f"Failed to write log: {e}")
+    # Write to file
+    try:
+        with open("dm_log.log", "a", encoding="utf-8") as f:
+            f.write(log_line + "\n")
+    except Exception as e:
+        print(f"Failed to write log: {e}")
 
 @bot.event
 async def on_command_error(ctx, error):

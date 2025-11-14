@@ -19,11 +19,9 @@ bot = commands.Bot(
 
 bot.remove_command('help')
 async def setup_hook():
-    for filename in os.listdir("./cogs"):
-        if filename.endswith(".py"):
-            if not filename.startswith('button'):
-                extension = f"cogs.{filename[:-3]}"
-                await bot.load_extension(extension)
+    for filename in os.listdir():
+        if filename.endswith("command.py"):
+            await bot.load_extension(filename[:-3])
     await bot.tree.sync()
 bot.setup_hook = setup_hook
 
